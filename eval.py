@@ -5,16 +5,9 @@ import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-from util import read_csv
-from dataset import PredictDataset, prepare_data
+from util import datasets_construction, visualize_eval_results, build_test_set_with_checkpoint_scalers
 from model import MLP
-
-# 英文key → 中文列名映射
-TARGET_MAP = {
-    'ttfb': '首帧的平均',
-    'stall_count': 'pwc卡顿数',
-    'stall_rate': 'pwc卡顿率',
-}
+from config import TARGET_MAP, EVAL_CONFIG, DEFAULT_RAW_DATA_DIR
 
 
 def load_model(model_path):
@@ -73,25 +66,29 @@ def predict(model, df, feature_cols, scaler_X, scaler_y):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', type=str, required=True)
+    parser.add_argument('--raw_data_folder', type=str, default=str(DEFAULT_RAW_DATA_DIR))
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--target', type=str, required=True)
-    parser.add_argument('--mode', type=str, default='eval', choices=['eval', 'predict'])
+    parser.add_argument('--mode', type=str, default=EVAL_CONFIG['mode'], choices=['eval', 'predict'])
+    parser.add_argument('--plot_path', type=str, default=EVAL_CONFIG['plot_path'])
     args = parser.parse_args()
 
     model, scaler_X, scaler_y = load_model(args.model)
-    df = read_csv(args.data)
+    _, _, dataset = datasets_construction(rawdataset_dir=args.raw_data_folder)
     exclude = set(TARGET_MAP.values())
-    feature_cols = [c for c in df.select_dtypes(include='number').columns if c not in exclude]
-
+    feature_cols = [c for c in dataset.select_dtypes(include='number').columns if c not in exclude]
     col = TARGET_MAP.get(args.target, args.target)
 
     if args.mode == 'eval':
-        _, _, test_set, _, _, _ = prepare_data(df, feature_cols, col)
+        #拆出测试机，还原test_set变换，并获取日志数
+        test_set, log_test = build_test_set_with_checkpoint_scalers(dataset, feature_cols, col, scaler_X, scaler_y)
         print(f"Evaluate: {args.target} ({col})")
-        evaluate(model, test_set, scaler_y)
-    else:
-        y_pred = predict(model, df, feature_cols, scaler_X, scaler_y)
+        #评估
+        _, y_true, y_pred = evaluate(model, test_set, scaler_y, batch_size=EVAL_CONFIG['batch_size'])
+        #画图
+        fig_path = visualize_eval_results(y_true, y_pred, log_test, args.target, save_path=args.plot_path)
+    elif args.mode == 'predict':
+        y_pred = predict(model, dataset, feature_cols, scaler_X, scaler_y)
         print(f"Predict: {args.target} ({col})")
         for i, v in enumerate(y_pred):
             print(f"  sample {i}: {v:.4f}")

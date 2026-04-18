@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
+from config import DATA_SPLIT_CONFIG
 
 
 class PredictDataset(Dataset):
@@ -17,7 +18,13 @@ class PredictDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 
-def prepare_data(df, feature_cols, target_col, val_ratio=0.15, test_ratio=0.2):
+def prepare_data(
+    df,
+    feature_cols,
+    target_col,
+    val_ratio=DATA_SPLIT_CONFIG["val_ratio"],
+    test_ratio=DATA_SPLIT_CONFIG["test_ratio"],
+):
     # 提取特征和目标
     X = df[feature_cols].values.astype(np.float32)
     y = df[target_col].values.astype(np.float32)

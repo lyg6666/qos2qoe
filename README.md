@@ -39,7 +39,7 @@
 
 ## 数据切分
 
-按顺序切分（非随机），比例：train 68% / val 12% / test 20%
+按顺序切分（非随机），比例：train 65% / val 15% / test 20%
 
 特征和目标均做 StandardScaler 标准化，仅在训练集上 fit。
 
@@ -49,19 +49,19 @@
 
 ```bash
 # 训练全部三个目标
-python3 train.py --data data.csv
+python train.py --raw_data_folder ../raw_dataset
 
 # 训练单个目标
-python3 train.py --data data.csv --target ttfb
+python train.py --raw_data_folder ../raw_dataset --target ttfb
 
 # 指定 checkpoint 保存目录
-python3 train.py --data data.csv --save-dir ./checkpoints
+python train.py --raw_data_folder ../raw_dataset --save-dir ./checkpoints
 ```
 
 ### 评估
 
 ```bash
-python3 eval.py --data data.csv --model checkpoints/mlp_ttfb.pt --target ttfb --mode eval
+python eval.py --raw_data_folder ../raw_dataset --model checkpoints/mlp_ttfb.pt --target ttfb --mode eval
 ```
 
 输出指标：MAE、RMSE、R2、MAPE
@@ -69,7 +69,7 @@ python3 eval.py --data data.csv --model checkpoints/mlp_ttfb.pt --target ttfb --
 ### 预测新数据
 
 ```bash
-python3 eval.py --data new_data.csv --model checkpoints/mlp_ttfb.pt --target ttfb --mode predict
+python eval.py --raw_data_folder ../raw_dataset --model checkpoints/mlp_ttfb.pt --target ttfb --mode predict
 ```
 
 ## Checkpoint 内容

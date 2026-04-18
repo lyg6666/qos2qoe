@@ -5,30 +5,24 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from util import read_csv
+from util import datasets_construction
 from dataset import prepare_data
 from model import MLP
-
-# 英文key → 中文列名映射
-TARGET_MAP = {
-    'ttfb': '首帧的平均',
-    'stall_count': 'pwc卡顿数',
-    'stall_rate': 'pwc卡顿率',
-}
-TARGETS = list(TARGET_MAP.keys())
-
-MLP_CONFIG = {
-    'epochs': 100,
-    'lr': 1e-3,
-    'batch_size': 64,
-    'patience': 15,
-    'weight_decay': 1e-4,
-    'hidden_dims': [128, 64],
-    'dropout': 0.2,
-}
+from config import TARGET_MAP, MLP_CONFIG, DEFAULT_RAW_DATA_DIR, DEFAULT_CHECKPOINT_DIR
 
 
-def train(model, train_set, val_set, config, save_path=None, scaler_X=None, scaler_y=None):
+def train(
+    model,
+    train_set,
+    val_set,
+    config,
+    save_path=None,
+    scaler_X=None,
+    scaler_y=None,
+    target_key=None,
+    target_col=None,
+    feature_cols=None,
+):
     train_dl = DataLoader(train_set, batch_size=config['batch_size'], shuffle=True)
     val_dl = DataLoader(val_set, batch_size=config['batch_size'], shuffle=False)
 
@@ -93,6 +87,9 @@ def train(model, train_set, val_set, config, save_path=None, scaler_X=None, scal
             'config': config,
             'scaler_X': scaler_X,
             'scaler_y': scaler_y,
+            'target_key': target_key,
+            'target_col': target_col,
+            'feature_cols': feature_cols,
         }, save_path)
 
     return model, train_losses, val_losses
@@ -100,29 +97,35 @@ def train(model, train_set, val_set, config, save_path=None, scaler_X=None, scal
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', type=str, required=True)
+    parser.add_argument('--raw_data_folder', type=str, default=str(DEFAULT_RAW_DATA_DIR))
     parser.add_argument('--target', type=str, default=None)
-    parser.add_argument('--save-dir', type=str, default='./checkpoints')
+    parser.add_argument('--save-dir', type=str, default=str(DEFAULT_CHECKPOINT_DIR))
     args = parser.parse_args()
 
     targets = [args.target] if args.target else list(TARGET_MAP.keys())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    _, _, dataset = datasets_construction(rawdataset_dir=args.raw_data_folder)
 
-    df = read_csv(args.data)
-    exclude = set(TARGETS)
-    feature_cols = [c for c in df.select_dtypes(include='number').columns if c not in exclude]
+    exclude = set(TARGET_MAP.values())
+    feature_cols = [c for c in dataset.select_dtypes(include='number').columns if c not in exclude]
 
     for target in targets:
         col = TARGET_MAP.get(target)
-        if not col or col not in df.columns:
+        if not col or col not in dataset.columns:
             continue
-
-        print(f"\n{'=' * 50}")
-        print(f"Target: {target} ({col})")
-        print(f"{'=' * 50}")
-
-        train_set, val_set, test_set, input_dim, scaler_X, scaler_y = prepare_data(df, feature_cols, col)
+        train_set, val_set, test_set, input_dim, scaler_X, scaler_y = prepare_data(dataset, feature_cols, col)
         model = MLP(input_dim, MLP_CONFIG['hidden_dims'], MLP_CONFIG['dropout']).to(device)
 
         save_path = os.path.join(args.save_dir, f'mlp_{target}.pt')
-        model, _, _ = train(model, train_set, val_set, MLP_CONFIG, save_path=save_path, scaler_X=scaler_X, scaler_y=scaler_y)
+        model, _, _ = train(
+            model,
+            train_set,
+            val_set,
+            MLP_CONFIG,
+            save_path=save_path,
+            scaler_X=scaler_X,
+            scaler_y=scaler_y,
+            target_key=target,
+            target_col=col,
+            feature_cols=feature_cols,
+        )
