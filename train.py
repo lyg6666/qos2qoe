@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from util import datasets_construction
 from dataset import prepare_data
-from model import MLP
+from MLP_model import MLP
 from config import TARGET_MAP, MLP_CONFIG, DEFAULT_RAW_DATA_DIR, DEFAULT_CHECKPOINT_DIR
 
 

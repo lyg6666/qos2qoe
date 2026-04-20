@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from util import datasets_construction, visualize_eval_results, build_test_set_with_checkpoint_scalers
-from model import MLP
+from MLP_model import MLP
 from config import TARGET_MAP, EVAL_CONFIG, DEFAULT_RAW_DATA_DIR
 
 
