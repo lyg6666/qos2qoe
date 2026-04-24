@@ -81,6 +81,7 @@ def datasets_construction(
 	client_f.to_csv(output_paths["client"], index=False, encoding="utf-8-sig")
 	server_f.to_csv(output_paths["server"], index=False, encoding="utf-8-sig")
 	merged.to_csv(output_paths["merged"], index=False, encoding="utf-8-sig")
+	print(f"Dataset built: {len(merged)} rows, {len(merged.columns)} cols -> {output_paths['merged']}")
 	return client_f, server_f, merged
 
 
@@ -93,7 +94,9 @@ def visualize_eval_results(
 	log_count = np.asarray(log_count).reshape(-1)
 
 	if save_path is None:
-		save_path = DEFAULT_EVAL_PLOT_DIR / f"{target_name}_pred_vs_true.png"
+		from datetime import datetime
+		timestamp = datetime.now().strftime("%m%d_%H%M%S")
+		save_path = DEFAULT_EVAL_PLOT_DIR / f"{target_name}_pred_vs_true_{timestamp}.png"
 	else:
 		save_path = Path(save_path)
 	save_path.parent.mkdir(parents=True, exist_ok=True)

@@ -37,22 +37,22 @@ DCN_CONFIG = {
 # 预训练配置（Stage1: 掩码预测）
 PRETRAIN_CONFIG = {
 	"epochs": 100,
+	"warmup_epochs": 5,
 	"lr": 1e-3,
-	"batch_size": 64,
+	"batch_size": 256,
 	"patience": 15,
 	"weight_decay": 1e-4,
-	"warmup_epochs": 5,
 }
 
 # 微调配置（Stage2: 预测卡顿率）
 FINETUNE_CONFIG = {
 	"epochs": 100,
+	"warmup_epochs": 5,
 	"lr": 1e-4,
-	"batch_size": 64,
+	"batch_size": 256,
 	"patience": 15,
 	"weight_decay": 1e-4,
 	"freeze_backbone": False,
-	"warmup_epochs": 5,
 }
 
 # 数据切分配置

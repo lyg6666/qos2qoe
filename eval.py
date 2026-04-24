@@ -76,9 +76,30 @@ def evaluate(args):
 	r2 = r2_score(y_true, y_pred)
 	print(f"[{args.target}] MAE={mae:.4f}  MSE={mse:.4f}  RMSE={rmse:.4f}  R2={r2:.4f}")
 
+	# 创建结果文件夹（包含R²和时间戳）
+	from datetime import datetime
+	timestamp = datetime.now().strftime("%m%d_%H%M%S")
+	run_dir = DEFAULT_EVAL_PLOT_DIR / f"{args.target}_R2={r2:.4f}_{timestamp}"
+	run_dir.mkdir(parents=True, exist_ok=True)
+
 	# 可视化
-	plot_path = visualize_eval_results(y_true, y_pred, log_test, args.target)
+	plot_path = run_dir / "pred_vs_true.png"
+	visualize_eval_results(y_true, y_pred, log_test, args.target, save_path=plot_path)
 	print(f"Plot saved to {plot_path}")
+
+	# 保存参数记录
+	info_path = run_dir / "config.txt"
+	with open(info_path, "w") as f:
+		f.write(f"target: {args.target}\n")
+		f.write(f"MAE={mae:.4f}  MSE={mse:.4f}  RMSE={rmse:.4f}  R2={r2:.4f}\n\n")
+		f.write("--- model config ---\n")
+		for k, v in cfg.items():
+			f.write(f"  {k}: {v}\n")
+		f.write("\n--- finetune config ---\n")
+		from config import FINETUNE_CONFIG
+		for k, v in FINETUNE_CONFIG.items():
+			f.write(f"  {k}: {v}\n")
+	print(f"Config saved to {info_path}")
 
 
 if __name__ == "__main__":
