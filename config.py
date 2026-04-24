@@ -39,7 +39,7 @@ PRETRAIN_CONFIG = {
 	"epochs": 100,
 	"warmup_epochs": 5,
 	"lr": 1e-3,
-	"batch_size": 256,
+	"batch_size": 512,
 	"patience": 15,
 	"weight_decay": 1e-4,
 }
@@ -48,8 +48,8 @@ PRETRAIN_CONFIG = {
 FINETUNE_CONFIG = {
 	"epochs": 100,
 	"warmup_epochs": 5,
-	"lr": 1e-4,
-	"batch_size": 256,
+	"lr": 5e-5,
+	"batch_size": 512,
 	"patience": 15,
 	"weight_decay": 1e-4,
 	"freeze_backbone": False,

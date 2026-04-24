@@ -95,8 +95,11 @@ def evaluate(args):
 		f.write("--- model config ---\n")
 		for k, v in cfg.items():
 			f.write(f"  {k}: {v}\n")
+		f.write("\n--- pretrain config ---\n")
+		from config import PRETRAIN_CONFIG, FINETUNE_CONFIG
+		for k, v in PRETRAIN_CONFIG.items():
+			f.write(f"  {k}: {v}\n")
 		f.write("\n--- finetune config ---\n")
-		from config import FINETUNE_CONFIG
 		for k, v in FINETUNE_CONFIG.items():
 			f.write(f"  {k}: {v}\n")
 	print(f"Config saved to {info_path}")
