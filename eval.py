@@ -5,9 +5,14 @@ import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-from util import datasets_construction, visualize_eval_results, build_test_set_with_checkpoint_scalers
+from util import (
+    datasets_construction,
+    visualize_eval_results,
+    build_test_set_with_checkpoint_scalers,
+    explain_qoe_change_with_shap,
+)
 from MLP_model import MLP
-from config import TARGET_MAP, EVAL_CONFIG, DEFAULT_RAW_DATA_DIR
+from config import TARGET_MAP, EVAL_CONFIG, DEFAULT_RAW_DATA_DIR, SHAP_CONFIG
 
 
 def load_model(model_path):
@@ -69,8 +74,12 @@ if __name__ == '__main__':
     parser.add_argument('--raw_data_folder', type=str, default=str(DEFAULT_RAW_DATA_DIR))
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--target', type=str, required=True)
-    parser.add_argument('--mode', type=str, default=EVAL_CONFIG['mode'], choices=['eval', 'predict'])
+    parser.add_argument('--mode', type=str, default=EVAL_CONFIG['mode'], choices=['eval', 'predict', 'explain'])
     parser.add_argument('--plot_path', type=str, default=EVAL_CONFIG['plot_path'])
+    parser.add_argument('--sample_index', type=int, default=SHAP_CONFIG['sample_index'])
+    parser.add_argument('--window_minutes', type=int, default=SHAP_CONFIG['window_minutes'])
+    parser.add_argument('--top_k', type=int, default=SHAP_CONFIG['top_k'])
+    parser.add_argument('--background_size', type=int, default=SHAP_CONFIG['background_size'])
     args = parser.parse_args()
 
     model, scaler_X, scaler_y = load_model(args.model)
@@ -92,3 +101,18 @@ if __name__ == '__main__':
         print(f"Predict: {args.target} ({col})")
         for i, v in enumerate(y_pred):
             print(f"  sample {i}: {v:.4f}")
+    elif args.mode == 'explain':
+        print(f"Explain: {args.target} ({col}) | sample_index={args.sample_index}")
+        result = explain_qoe_change_with_shap(
+            model=model,
+            df=dataset,
+            feature_cols=feature_cols,
+            scaler_X=scaler_X,
+            scaler_y=scaler_y,
+            target_name=col,
+            sample_index=args.sample_index,
+            window_minutes=args.window_minutes,
+            top_k=args.top_k,
+            background_size=args.background_size,
+        )
+        print(result["message"])

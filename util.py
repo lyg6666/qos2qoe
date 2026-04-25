@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+import torch
 from config import (
     DEFAULT_RAW_DATA_DIR,
     DEFAULT_DATASET_OUTPUT_DIR,
@@ -202,3 +203,101 @@ def build_test_set_with_checkpoint_scalers(
     X_test = np.nan_to_num(scaler_X.transform(X_test), nan=0.0).astype(np.float32)
     y_test = scaler_y.transform(y_test.reshape(-1, 1)).flatten().astype(np.float32)
     return PredictDataset(X_test, y_test), log_test
+
+
+def explain_qoe_change_with_shap(
+    model,
+    df,
+    feature_cols,
+    scaler_X,
+    scaler_y,
+    target_name,
+    sample_index=-1,
+    time_col=MERGE_CONFIG["time_col"],
+    window_minutes=10,
+    top_k=3,
+    background_size=128,
+):
+    """使用 SHAP 解释单样本 QoE 预测相对前10分钟基线的上升/下降原因。"""
+    import shap
+
+    if sample_index < 0:
+        sample_index = len(df) + sample_index
+    if sample_index < 0 or sample_index >= len(df):
+        raise IndexError(f"sample_index 超出范围: {sample_index}, 数据长度={len(df)}")
+
+    if time_col not in df.columns:
+        raise ValueError(f"数据缺少时间列: {time_col}")
+
+    work_df = df.copy()
+    work_df[time_col] = pd.to_datetime(work_df[time_col], errors="coerce")
+    work_df = work_df.dropna(subset=[time_col]).reset_index(drop=True)
+
+    if sample_index >= len(work_df):
+        raise IndexError(f"时间清洗后 sample_index 超出范围: {sample_index}, 数据长度={len(work_df)}")
+
+    x_raw_all = work_df[feature_cols].values.astype(np.float32)
+    x_scaled_all = np.nan_to_num(scaler_X.transform(x_raw_all), nan=0.0).astype(np.float32)
+
+    ts_current = work_df.loc[sample_index, time_col]
+    ts_start = ts_current - pd.Timedelta(minutes=window_minutes)
+    baseline_mask = (work_df[time_col] >= ts_start) & (work_df[time_col] < ts_current)
+    baseline_idx = np.where(baseline_mask.values)[0]
+    if len(baseline_idx) == 0:
+        raise ValueError(f"样本 {sample_index} 前 {window_minutes} 分钟内无可用基线数据")
+
+    baseline_scaled = x_scaled_all[baseline_idx]
+    if len(baseline_scaled) > background_size:
+        rng = np.random.default_rng(42)
+        pick = rng.choice(len(baseline_scaled), size=background_size, replace=False)
+        baseline_scaled = baseline_scaled[pick]
+
+    x_current_scaled = x_scaled_all[sample_index:sample_index + 1]
+
+    model.eval()
+    with torch.no_grad():
+        pred_scaled = model(torch.tensor(x_current_scaled, dtype=torch.float32)).cpu().numpy().flatten()[0]
+        pred_value = scaler_y.inverse_transform(np.array([[pred_scaled]], dtype=np.float32)).flatten()[0]
+
+    with torch.no_grad():
+        base_preds_scaled = model(torch.tensor(baseline_scaled, dtype=torch.float32)).cpu().numpy().flatten()
+    base_pred_value = scaler_y.inverse_transform(base_preds_scaled.reshape(-1, 1)).flatten().mean()
+
+    def _model_predict_real(x_scaled_np):
+        with torch.no_grad():
+            y_scaled = model(torch.tensor(x_scaled_np, dtype=torch.float32)).cpu().numpy()
+        return scaler_y.inverse_transform(y_scaled).flatten()
+
+    explainer = shap.KernelExplainer(_model_predict_real, baseline_scaled)
+    shap_values = explainer.shap_values(x_current_scaled, nsamples=min(200, max(20, len(feature_cols) * 2)))
+    shap_values = np.array(shap_values).reshape(-1)
+
+    contrib_df = pd.DataFrame({
+        "feature": feature_cols,
+        "shap_contribution": shap_values,
+        "abs_contribution": np.abs(shap_values),
+        "current_value": work_df.loc[sample_index, feature_cols].values,
+    }).sort_values("abs_contribution", ascending=False)
+
+    top_df = contrib_df.head(top_k).copy()
+    direction = "上升" if (pred_value - base_pred_value) >= 0 else "下降"
+    delta = pred_value - base_pred_value
+
+    lines = [
+        f"本次预测 {target_name} {pred_value:.4f}，相较前{window_minutes}分钟基线 {base_pred_value:.4f}，变化 {delta:+.4f}（{direction}）。"
+    ]
+    for _, row in top_df.iterrows():
+        lines.append(
+            f"{row['feature']} 贡献 {row['shap_contribution']:+.4f}"
+        )
+
+    return {
+        "sample_index": int(sample_index),
+        "timestamp": str(ts_current),
+        "prediction": float(pred_value),
+        "baseline_prediction": float(base_pred_value),
+        "delta": float(delta),
+        "direction": direction,
+        "top_contributors": top_df[["feature", "shap_contribution", "current_value"]].to_dict(orient="records"),
+        "message": "；".join(lines),
+    }

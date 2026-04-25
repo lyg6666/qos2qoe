@@ -53,3 +53,10 @@ VIS_CONFIG = {
 	"log_col": "日志数",
 	"max_points": None,
 }
+
+SHAP_CONFIG = {
+	"window_minutes": 10,
+	"top_k": 10,
+	"background_size": 128,
+	"sample_index": -1,
+}

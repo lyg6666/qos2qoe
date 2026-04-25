@@ -72,6 +72,13 @@ python eval.py --raw_data_folder ../raw_dataset --model checkpoints/mlp_ttfb.pt 
 python eval.py --raw_data_folder ../raw_dataset --model checkpoints/mlp_ttfb.pt --target ttfb --mode predict
 ```
 
+### 根因分析
+
+```bash
+# 判断当前QoE变化的原因
+python eval.py --raw_data_folder ../raw_dataset --model checkpoints/mlp_stall_rate.pt --target stall_rate --mode explain --sample_index -1 --window_minutes 10 --top_k 3
+```
+
 ## Checkpoint 内容
 
 每个 .pt 文件保存：
