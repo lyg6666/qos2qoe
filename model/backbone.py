@@ -7,23 +7,21 @@ import math
 class FeatureEmbedding(nn.Module):
 	def __init__(self, num_features, d_model):
 		super().__init__()
-		self.projections = nn.ModuleList([nn.Linear(1, d_model) for _ in range(num_features)])
+		self.weight = nn.Parameter(torch.empty(num_features, d_model))
+		self.bias = nn.Parameter(torch.zeros(num_features, d_model))
+		nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 		self.mask_token = nn.Parameter(torch.randn(d_model))
 		self.num_features = num_features
 		self.d_model = d_model
 
 	def forward(self, x, mask_positions=None):
 		# x: (batch, num_features)
-		# mask_positions: list[list[int]] 每个样本要 mask 的特征索引列表，或 None
-		tokens = []
-		for i in range(self.num_features):
-			tokens.append(self.projections[i](x[:, i:i+1]))
-		tokens = torch.stack(tokens, dim=1)  # (batch, num_features, d_model)
+		# 一次矩阵广播替代 68 次独立 Linear 调用
+		tokens = x.unsqueeze(-1) * self.weight + self.bias  # (batch, num_features, d_model)
 
 		if mask_positions is not None:
 			for b, positions in enumerate(mask_positions):
-				for pos in positions:
-					tokens[b, pos] = self.mask_token
+				tokens[b, positions] = self.mask_token
 		return tokens
 
 

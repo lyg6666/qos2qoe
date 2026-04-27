@@ -8,9 +8,9 @@ from config import (
 	BACKBONE_CONFIG, PRETRAIN_CONFIG, DEFAULT_CHECKPOINT_DIR,
 	DEFAULT_DATASET_OUTPUT_DIR, TARGET_COLS,
 )
-from dataset import prepare_pretrain_data, build_group_indices, mask_group_features
+from dataset import prepare_pretrain_data, build_group_indices, mask_group_features, build_group_mask_matrix
 from model import PretrainModel
-from util import read_csv, build_scheduler
+from util import read_csv, build_scheduler, get_device
 
 
 def group_mse_loss(preds, targets):
@@ -21,7 +21,7 @@ def group_mse_loss(preds, targets):
 
 
 def train(args):
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = get_device()
 	cfg_b = BACKBONE_CONFIG
 	cfg_t = PRETRAIN_CONFIG
 
@@ -29,6 +29,7 @@ def train(args):
 	feature_cols = [c for c in df.columns if c not in TARGET_COLS and c != "时间"]
 	train_set, val_set, scaler_X = prepare_pretrain_data(df, feature_cols)
 	groups = build_group_indices(feature_cols)
+	group_mask_matrix = build_group_mask_matrix(groups, cfg_b["num_features"])
 
 	train_loader = DataLoader(train_set, batch_size=cfg_t["batch_size"], shuffle=True)
 	val_loader = DataLoader(val_set, batch_size=cfg_t["batch_size"])
@@ -53,7 +54,7 @@ def train(args):
 		train_loss = 0.0
 		for X in train_loader:
 			X = X.to(device)
-			X_masked, mask_positions, targets = mask_group_features(X, groups)
+			X_masked, mask_positions, targets = mask_group_features(X, groups, group_mask_matrix.to(device))
 			targets = [t.to(device) for t in targets]
 			preds = model(X_masked, mask_positions)
 			loss = group_mse_loss(preds, targets)
@@ -69,7 +70,7 @@ def train(args):
 		with torch.no_grad():
 			for X in val_loader:
 				X = X.to(device)
-				X_masked, mask_positions, targets = mask_group_features(X, groups)
+				X_masked, mask_positions, targets = mask_group_features(X, groups, group_mask_matrix.to(device))
 				targets = [t.to(device) for t in targets]
 				preds = model(X_masked, mask_positions)
 				loss = group_mse_loss(preds, targets)

@@ -72,21 +72,31 @@ def build_group_indices(feature_cols, metric_groups=METRIC_GROUPS):
 	return groups
 
 
-def mask_group_features(X, groups):
+def build_group_mask_matrix(groups, num_features):
+	num_groups = len(groups)
+	matrix = torch.zeros(num_groups, num_features, dtype=torch.bool)
+	for i, positions in enumerate(groups):
+		matrix[i, positions] = True
+	return matrix
+
+
+def mask_group_features(X, groups, group_mask_matrix=None):
 	# X: (batch, num_features) tensor
-	batch_size = X.shape[0]
+	batch_size, num_features = X.shape
 	num_groups = len(groups)
 	chosen = torch.randint(0, num_groups, (batch_size,))
 
-	X_masked = X.clone()
-	mask_positions = []
-	targets = []
+	if group_mask_matrix is None:
+		group_mask_matrix = build_group_mask_matrix(groups, num_features).to(X.device)
 
-	for b in range(batch_size):
-		positions = groups[chosen[b].item()]
-		mask_positions.append(positions)
-		targets.append(X[b, positions].clone())
-		X_masked[b, positions] = 0.0
+	# 向量化掩码：(batch, num_features)
+	batch_mask = group_mask_matrix[chosen]
+	X_masked = X.clone()
+	X_masked[batch_mask] = 0.0
+
+	# targets 因组大小不同，仍需逐样本提取
+	mask_positions = [groups[c.item()] for c in chosen]
+	targets = [X[b, groups[chosen[b].item()]].clone() for b in range(batch_size)]
 
 	return X_masked, mask_positions, targets
 

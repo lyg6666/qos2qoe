@@ -1,4 +1,5 @@
 # 工具函数
+import torch
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -7,6 +8,14 @@ from config import (
 	DEFAULT_RAW_DATA_DIR, DEFAULT_DATASET_OUTPUT_DIR,
 	DEFAULT_EVAL_PLOT_DIR, MERGE_CONFIG, VIS_CONFIG,
 )
+
+
+def get_device():
+	if torch.cuda.is_available():
+		return torch.device("cuda")
+	if torch.backends.mps.is_available():
+		return torch.device("mps")
+	return torch.device("cpu")
 
 
 def build_scheduler(optimizer, warmup_epochs, total_epochs, steps_per_epoch):

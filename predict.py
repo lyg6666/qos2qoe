@@ -9,11 +9,11 @@ from config import (
 	TARGET_MAP, TARGET_COLS, CLASSIFICATION_CONFIG,
 )
 from model import FullModel
-from util import read_csv
+from util import read_csv, get_device
 
 
 def predict(args):
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = get_device()
 	target_col = TARGET_MAP[args.target]
 
 	ckpt_path = Path(args.ckpt_dir) / f"finetune_{args.target}.pt"

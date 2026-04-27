@@ -11,11 +11,11 @@ from config import (
 )
 from dataset import prepare_finetune_data
 from model import FullModel
-from util import read_csv, build_scheduler
+from util import read_csv, build_scheduler, get_device
 
 
 def train(args):
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = get_device()
 	cfg_b = BACKBONE_CONFIG
 	cfg_d = DCN_CONFIG
 	cfg_t = FINETUNE_CONFIG

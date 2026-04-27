@@ -12,7 +12,7 @@ from config import (
 )
 from dataset import FinetuneDataset, SlidingWindowFinetuneDataset
 from model import FullModel
-from util import read_csv, visualize_eval_results
+from util import read_csv, visualize_eval_results, get_device
 from sklearn.metrics import (
 	mean_absolute_error, mean_squared_error, r2_score,
 	accuracy_score, f1_score, confusion_matrix, classification_report,
@@ -20,7 +20,7 @@ from sklearn.metrics import (
 
 
 def evaluate(args):
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = get_device()
 	target_col = TARGET_MAP[args.target]
 
 	ckpt_path = Path(args.ckpt_dir) / f"finetune_{args.target}.pt"
