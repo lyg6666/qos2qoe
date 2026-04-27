@@ -81,8 +81,10 @@ def train(args):
 		train_loss = 0.0
 		for X, y in train_loader:
 			X, y = X.to(device), y.to(device)
-			if task_type == "regression":
+			if task_type == "classification":
 				y = y.squeeze()
+			else:
+				y = y.view(-1)
 			pred = model(X)
 			loss = criterion(pred, y)
 			optimizer.zero_grad()
@@ -97,8 +99,10 @@ def train(args):
 		with torch.no_grad():
 			for X, y in val_loader:
 				X, y = X.to(device), y.to(device)
-				if task_type == "regression":
+				if task_type == "classification":
 					y = y.squeeze()
+				else:
+					y = y.view(-1)
 				pred = model(X)
 				loss = criterion(pred, y)
 				val_loss += loss.item() * X.size(0)

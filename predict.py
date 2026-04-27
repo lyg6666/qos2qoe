@@ -42,10 +42,8 @@ def predict(args):
 
 	if seq_len > 1:
 		n_samples = len(X) - seq_len
-		windows = np.zeros((n_samples, seq_len, X.shape[1]), dtype=np.float32)
-		for i in range(n_samples):
-			windows[i] = X[i:i + seq_len]
-		X_tensor = torch.tensor(windows, dtype=torch.float32).to(device)
+		indices = torch.arange(n_samples).unsqueeze(1) + torch.arange(seq_len)
+		X_tensor = torch.tensor(X, dtype=torch.float32)[indices].to(device)
 		df_out = df.iloc[seq_len:].copy().reset_index(drop=True)
 	else:
 		X_tensor = torch.tensor(X, dtype=torch.float32).to(device)

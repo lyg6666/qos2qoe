@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from pathlib import Path
 from config import (
-	BACKBONE_CONFIG, DCN_CONFIG, EVAL_CONFIG,
+	BACKBONE_CONFIG, DCN_CONFIG, EVAL_CONFIG, DATA_SPLIT_CONFIG,
 	DEFAULT_CHECKPOINT_DIR, DEFAULT_DATASET_OUTPUT_DIR,
 	DEFAULT_EVAL_PLOT_DIR, TARGET_MAP, TARGET_COLS,
 	CLASSIFICATION_CONFIG,
@@ -40,7 +40,7 @@ def evaluate(args):
 	y = df[target_col].values.astype(np.float32)
 	log_count = df["日志数"].values.astype(np.float32)
 
-	test_idx = int(len(X) * 0.8)
+	test_idx = int(len(X) * (1 - DATA_SPLIT_CONFIG["test_ratio"]))
 	X_test = np.nan_to_num(scaler_X.transform(X[test_idx:]), nan=0.0).astype(np.float32)
 	y_test_raw = y[test_idx:]
 	log_test = log_count[test_idx:]
