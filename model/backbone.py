@@ -10,19 +10,13 @@ class FeatureEmbedding(nn.Module):
 		self.weight = nn.Parameter(torch.empty(num_features, d_model))
 		self.bias = nn.Parameter(torch.zeros(num_features, d_model))
 		nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-		self.mask_token = nn.Parameter(torch.randn(d_model))
 		self.num_features = num_features
 		self.d_model = d_model
 
-	def forward(self, x, mask_positions=None):
+	def forward(self, x):
 		# x: (batch, num_features)
-		# 一次矩阵广播替代 68 次独立 Linear 调用
-		tokens = x.unsqueeze(-1) * self.weight + self.bias  # (batch, num_features, d_model)
-
-		if mask_positions is not None:
-			for b, positions in enumerate(mask_positions):
-				tokens[b, positions] = self.mask_token
-		return tokens
+		# 一次广播矩阵乘替代 68 次独立 Linear 调用
+		return x.unsqueeze(-1) * self.weight + self.bias  # (batch, num_features, d_model)
 
 
 class PositionalEncoding(nn.Module):
@@ -52,11 +46,10 @@ class TransformerBackbone(nn.Module):
 		self.d_model = d_model
 		self.num_features = num_features
 
-	def forward(self, x, mask_positions=None):
-		tokens = self.embedding(x, mask_positions)
+	def forward(self, x):
+		tokens = self.embedding(x)
 		tokens = self.pos_enc(tokens)
-		output = self.transformer(tokens)
-		return output
+		return self.transformer(tokens)
 
 
 class PretrainHead(nn.Module):

@@ -54,6 +54,7 @@ def train(args):
 	for epoch in range(1, cfg_t["epochs"] + 1):
 		model.train()
 		train_loss = 0.0
+		train_batches = 0
 		for X in train_loader:
 			X = X.to(device)
 			X_masked, chosen_padded, targets_pad, chosen_valid = mask_group_features(
@@ -64,11 +65,13 @@ def train(args):
 			loss.backward()
 			optimizer.step()
 			scheduler.step()
-			train_loss += loss.item() * X.size(0)
-		train_loss /= len(train_set)
+			train_loss += loss.item()
+			train_batches += 1
+		train_loss /= train_batches
 
 		model.eval()
 		val_loss = 0.0
+		val_batches = 0
 		with torch.no_grad():
 			for X in val_loader:
 				X = X.to(device)
@@ -76,8 +79,9 @@ def train(args):
 					X, groups, group_mask_matrix, padded_indices, valid_mask)
 				preds = model(X_masked, chosen_padded, chosen_valid)
 				loss = group_mse_loss(preds, targets_pad, chosen_valid)
-				val_loss += loss.item() * X.size(0)
-		val_loss /= len(val_set)
+				val_loss += loss.item()
+				val_batches += 1
+		val_loss /= val_batches
 
 		print(f"Epoch {epoch}/{cfg_t['epochs']}  train_loss={train_loss:.6f}  val_loss={val_loss:.6f}")
 

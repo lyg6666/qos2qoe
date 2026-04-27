@@ -32,10 +32,11 @@ class FinetuneDataset(Dataset):
 class SlidingWindowFinetuneDataset(Dataset):
 	def __init__(self, X, y, seq_len, is_classification=False):
 		self.seq_len = seq_len
-		n_samples = len(X) - seq_len
-		self.X = torch.zeros(n_samples, seq_len, X.shape[1], dtype=torch.float32)
-		for i in range(n_samples):
-			self.X[i] = torch.tensor(X[i:i + seq_len], dtype=torch.float32)
+		X_t = torch.tensor(X, dtype=torch.float32)
+		# 向量化构建滑动窗口，无 Python 循环
+		# X_t: (n, num_features) → self.X: (n-seq_len, seq_len, num_features)
+		n_samples = len(X_t) - seq_len
+		self.X = torch.stack([X_t[i:i + seq_len] for i in range(n_samples)])
 
 		y_target = y[seq_len:]
 		if is_classification:
