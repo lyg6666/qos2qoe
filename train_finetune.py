@@ -16,6 +16,7 @@ from util import read_csv, build_scheduler, get_device
 
 def train(args):
 	device = get_device()
+	print(f"Using device: {device}")
 	cfg_b = BACKBONE_CONFIG
 	cfg_d = DCN_CONFIG
 	cfg_t = FINETUNE_CONFIG

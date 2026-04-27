@@ -22,6 +22,7 @@ def group_mse_loss(preds, targets_pad, chosen_valid):
 
 def train(args):
 	device = get_device()
+	print(f"Using device: {device}")
 	cfg_b = BACKBONE_CONFIG
 	cfg_t = PRETRAIN_CONFIG
 
