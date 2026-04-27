@@ -10,9 +10,9 @@ class PretrainModel(nn.Module):
 		self.backbone = TransformerBackbone(num_features, d_model, n_heads, n_layers, dropout)
 		self.pretrain_head = PretrainHead(d_model)
 
-	def forward(self, x, mask_positions):
-		hidden = self.backbone(x, mask_positions)
-		preds = self.pretrain_head(hidden, mask_positions)
+	def forward(self, x, chosen_padded, chosen_valid):
+		hidden = self.backbone(x)
+		preds = self.pretrain_head(hidden, chosen_padded, chosen_valid)
 		return preds
 
 

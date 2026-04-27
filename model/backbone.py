@@ -60,18 +60,21 @@ class TransformerBackbone(nn.Module):
 
 
 class PretrainHead(nn.Module):
-	# 组级掩码预测头：从所有 mask 位置的 token 预测原始值
+	# 组级掩码预测头：向量化处理，接收 padding 后的索引和掩码
 	def __init__(self, d_model):
 		super().__init__()
 		self.head = nn.Linear(d_model, 1)
 
-	def forward(self, hidden_states, mask_positions):
+	def forward(self, hidden_states, chosen_padded, chosen_valid):
 		# hidden_states: (batch, num_features, d_model)
-		# mask_positions: list[list[int]]
-		# 返回: list[Tensor]，每个 Tensor 形状为 (group_size,)
-		preds = []
-		for b, positions in enumerate(mask_positions):
-			masked_hidden = hidden_states[b, positions]  # (group_size, d_model)
-			pred = self.head(masked_hidden).squeeze(-1)  # (group_size,)
-			preds.append(pred)
+		# chosen_padded: (batch, max_group_size)  特征索引（含padding）
+		# chosen_valid:  (batch, max_group_size)  有效位置掩码
+		batch_size, max_group_size = chosen_padded.shape
+
+		# gather 对应位置的 hidden：(batch, max_group_size, d_model)
+		idx = chosen_padded.unsqueeze(-1).expand(-1, -1, hidden_states.size(-1))
+		masked_hidden = hidden_states.gather(1, idx)
+
+		# 预测：(batch, max_group_size)
+		preds = self.head(masked_hidden).squeeze(-1)
 		return preds

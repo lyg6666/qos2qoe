@@ -73,6 +73,7 @@ def build_group_indices(feature_cols, metric_groups=METRIC_GROUPS):
 
 
 def build_group_mask_matrix(groups, num_features):
+	"""构建 (num_groups, num_features) 布尔矩阵，每行标记该组覆盖的特征位置。"""
 	num_groups = len(groups)
 	matrix = torch.zeros(num_groups, num_features, dtype=torch.bool)
 	for i, positions in enumerate(groups):
@@ -80,25 +81,46 @@ def build_group_mask_matrix(groups, num_features):
 	return matrix
 
 
-def mask_group_features(X, groups, group_mask_matrix=None):
-	# X: (batch, num_features) tensor
+def build_group_pad_tensors(groups):
+	"""
+	将各组 padding 到相同长度，返回：
+	  padded_indices: (num_groups, max_group_size)  填充值为 0
+	  valid_mask:     (num_groups, max_group_size)  True=有效位置
+	"""
+	max_len = max(len(g) for g in groups)
+	num_groups = len(groups)
+	padded = torch.zeros(num_groups, max_len, dtype=torch.long)
+	valid = torch.zeros(num_groups, max_len, dtype=torch.bool)
+	for i, g in enumerate(groups):
+		padded[i, :len(g)] = torch.tensor(g, dtype=torch.long)
+		valid[i, :len(g)] = True
+	return padded, valid
+
+
+def mask_group_features(X, groups, group_mask_matrix, padded_indices, valid_mask):
+	"""
+	向量化组级掩码，无 Python batch 循环。
+	返回:
+	  X_masked:      (batch, num_features)
+	  chosen_padded: (batch, max_group_size)  选中组的特征索引（含padding）
+	  targets_pad:   (batch, max_group_size)  对应原始值（padding位置为0）
+	  chosen_valid:  (batch, max_group_size)  有效位置掩码
+	"""
 	batch_size, num_features = X.shape
 	num_groups = len(groups)
-	chosen = torch.randint(0, num_groups, (batch_size,))
+	chosen = torch.randint(0, num_groups, (batch_size,), device=X.device)
 
-	if group_mask_matrix is None:
-		group_mask_matrix = build_group_mask_matrix(groups, num_features).to(X.device)
+	# 掩码置零：(batch, num_features)
+	batch_mask = group_mask_matrix[chosen]          # (batch, num_features)
+	X_masked = X.masked_fill(batch_mask, 0.0)
 
-	# 向量化掩码：(batch, num_features)
-	batch_mask = group_mask_matrix[chosen]
-	X_masked = X.clone()
-	X_masked[batch_mask] = 0.0
+	# 提取 targets：用 padded_indices 批量 gather
+	chosen_padded = padded_indices[chosen]           # (batch, max_group_size)
+	chosen_valid = valid_mask[chosen]                # (batch, max_group_size)
+	# gather 原始值
+	targets_pad = X.gather(1, chosen_padded)         # (batch, max_group_size)
 
-	# targets 因组大小不同，仍需逐样本提取
-	mask_positions = [groups[c.item()] for c in chosen]
-	targets = [X[b, groups[chosen[b].item()]].clone() for b in range(batch_size)]
-
-	return X_masked, mask_positions, targets
+	return X_masked, chosen_padded, targets_pad, chosen_valid
 
 
 def prepare_pretrain_data(

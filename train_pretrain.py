@@ -1,23 +1,23 @@
 # Stage1: 组级掩码预训练 Backbone
 import argparse
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from pathlib import Path
 from config import (
 	BACKBONE_CONFIG, PRETRAIN_CONFIG, DEFAULT_CHECKPOINT_DIR,
 	DEFAULT_DATASET_OUTPUT_DIR, TARGET_COLS,
 )
-from dataset import prepare_pretrain_data, build_group_indices, mask_group_features, build_group_mask_matrix
+from dataset import prepare_pretrain_data, build_group_indices, mask_group_features, build_group_mask_matrix, build_group_pad_tensors
 from model import PretrainModel
 from util import read_csv, build_scheduler, get_device
 
 
-def group_mse_loss(preds, targets):
-	losses = []
-	for pred, target in zip(preds, targets):
-		losses.append(F.mse_loss(pred, target))
-	return torch.stack(losses).mean()
+def group_mse_loss(preds, targets_pad, chosen_valid):
+	# 全部向量化：只对有效位置计算 MSE
+	# preds, targets_pad, chosen_valid: (batch, max_group_size)
+	diff = (preds - targets_pad) ** 2
+	loss = (diff * chosen_valid.float()).sum() / chosen_valid.float().sum()
+	return loss
 
 
 def train(args):
@@ -29,7 +29,9 @@ def train(args):
 	feature_cols = [c for c in df.columns if c not in TARGET_COLS and c != "时间"]
 	train_set, val_set, scaler_X = prepare_pretrain_data(df, feature_cols)
 	groups = build_group_indices(feature_cols)
-	group_mask_matrix = build_group_mask_matrix(groups, cfg_b["num_features"])
+	group_mask_matrix = build_group_mask_matrix(groups, cfg_b["num_features"]).to(device)
+	padded_indices, valid_mask = build_group_pad_tensors(groups)
+	padded_indices, valid_mask = padded_indices.to(device), valid_mask.to(device)
 
 	train_loader = DataLoader(train_set, batch_size=cfg_t["batch_size"], shuffle=True)
 	val_loader = DataLoader(val_set, batch_size=cfg_t["batch_size"])
@@ -54,10 +56,10 @@ def train(args):
 		train_loss = 0.0
 		for X in train_loader:
 			X = X.to(device)
-			X_masked, mask_positions, targets = mask_group_features(X, groups, group_mask_matrix.to(device))
-			targets = [t.to(device) for t in targets]
-			preds = model(X_masked, mask_positions)
-			loss = group_mse_loss(preds, targets)
+			X_masked, chosen_padded, targets_pad, chosen_valid = mask_group_features(
+				X, groups, group_mask_matrix, padded_indices, valid_mask)
+			preds = model(X_masked, chosen_padded, chosen_valid)
+			loss = group_mse_loss(preds, targets_pad, chosen_valid)
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
@@ -70,10 +72,10 @@ def train(args):
 		with torch.no_grad():
 			for X in val_loader:
 				X = X.to(device)
-				X_masked, mask_positions, targets = mask_group_features(X, groups, group_mask_matrix.to(device))
-				targets = [t.to(device) for t in targets]
-				preds = model(X_masked, mask_positions)
-				loss = group_mse_loss(preds, targets)
+				X_masked, chosen_padded, targets_pad, chosen_valid = mask_group_features(
+					X, groups, group_mask_matrix, padded_indices, valid_mask)
+				preds = model(X_masked, chosen_padded, chosen_valid)
+				loss = group_mse_loss(preds, targets_pad, chosen_valid)
 				val_loss += loss.item() * X.size(0)
 		val_loss /= len(val_set)
 
