@@ -2,11 +2,13 @@
 import argparse
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
+from datetime import datetime
 from torch.utils.data import DataLoader
 from pathlib import Path
 from config import (
 	BACKBONE_CONFIG, DCN_CONFIG, EVAL_CONFIG, DATA_SPLIT_CONFIG,
-	DEFAULT_CHECKPOINT_DIR, DEFAULT_DATASET_OUTPUT_DIR,
+	FINETUNE_CONFIG, DEFAULT_CHECKPOINT_DIR, DEFAULT_DATASET_OUTPUT_DIR,
 	DEFAULT_EVAL_PLOT_DIR, TARGET_MAP, TARGET_COLS,
 	CLASSIFICATION_CONFIG,
 )
@@ -82,7 +84,6 @@ def evaluate(args):
 	y_pred_raw = np.concatenate(all_pred)
 	y_true_raw = np.concatenate(all_true)
 
-	from datetime import datetime
 	timestamp = datetime.now().strftime("%m%d_%H%M%S")
 
 	if task_type == "classification":
@@ -104,7 +105,6 @@ def evaluate(args):
 		run_dir.mkdir(parents=True, exist_ok=True)
 
 		# confusion matrix 可视化
-		import matplotlib.pyplot as plt
 		fig, ax = plt.subplots(figsize=(6, 5))
 		im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
 		ax.figure.colorbar(im, ax=ax)
@@ -156,7 +156,6 @@ def evaluate(args):
 			for k, v in cfg.items():
 				f.write(f"  {k}: {v}\n")
 			f.write("\n--- finetune config ---\n")
-			from config import FINETUNE_CONFIG
 			for k, v in FINETUNE_CONFIG.items():
 				f.write(f"  {k}: {v}\n")
 

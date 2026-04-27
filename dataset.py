@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
-from config import DATA_SPLIT_CONFIG, BACKBONE_CONFIG, METRIC_GROUPS
+from config import DATA_SPLIT_CONFIG, METRIC_GROUPS
 
 
 class PretrainDataset(Dataset):
@@ -73,55 +73,51 @@ def build_group_indices(feature_cols, metric_groups=METRIC_GROUPS):
 	return groups
 
 
-def build_group_mask_matrix(groups, num_features):
-	"""构建 (num_groups, num_features) 布尔矩阵，每行标记该组覆盖的特征位置。"""
-	num_groups = len(groups)
-	matrix = torch.zeros(num_groups, num_features, dtype=torch.bool)
-	for i, positions in enumerate(groups):
-		matrix[i, positions] = True
-	return matrix
+class GroupMasker:
+	"""封装组级掩码的预计算张量和掩码操作，调用方无需管理内部细节。"""
 
+	def __init__(self, groups, num_features, device="cpu"):
+		self.groups = groups
+		self.num_groups = len(groups)
 
-def build_group_pad_tensors(groups):
-	"""
-	将各组 padding 到相同长度，返回：
-	  padded_indices: (num_groups, max_group_size)  填充值为 0
-	  valid_mask:     (num_groups, max_group_size)  True=有效位置
-	"""
-	max_len = max(len(g) for g in groups)
-	num_groups = len(groups)
-	padded = torch.zeros(num_groups, max_len, dtype=torch.long)
-	valid = torch.zeros(num_groups, max_len, dtype=torch.bool)
-	for i, g in enumerate(groups):
-		padded[i, :len(g)] = torch.tensor(g, dtype=torch.long)
-		valid[i, :len(g)] = True
-	return padded, valid
+		# 构建 (num_groups, num_features) 布尔矩阵
+		mask_matrix = torch.zeros(self.num_groups, num_features, dtype=torch.bool)
+		for i, positions in enumerate(groups):
+			mask_matrix[i, positions] = True
+		self.mask_matrix = mask_matrix.to(device)
 
+		# padding 对齐各组索引
+		max_len = max(len(g) for g in groups)
+		padded = torch.zeros(self.num_groups, max_len, dtype=torch.long)
+		valid = torch.zeros(self.num_groups, max_len, dtype=torch.bool)
+		for i, g in enumerate(groups):
+			padded[i, :len(g)] = torch.tensor(g, dtype=torch.long)
+			valid[i, :len(g)] = True
+		self.padded_indices = padded.to(device)
+		self.valid_mask = valid.to(device)
 
-def mask_group_features(X, groups, group_mask_matrix, padded_indices, valid_mask):
-	"""
-	向量化组级掩码，无 Python batch 循环。
-	返回:
-	  X_masked:      (batch, num_features)
-	  chosen_padded: (batch, max_group_size)  选中组的特征索引（含padding）
-	  targets_pad:   (batch, max_group_size)  对应原始值（padding位置为0）
-	  chosen_valid:  (batch, max_group_size)  有效位置掩码
-	"""
-	batch_size, num_features = X.shape
-	num_groups = len(groups)
-	chosen = torch.randint(0, num_groups, (batch_size,), device=X.device)
+	def mask(self, X):
+		"""
+		向量化组级掩码。
+		参数:
+		  X: (batch, num_features)
+		返回:
+		  X_masked:      (batch, num_features)
+		  chosen_padded: (batch, max_group_size)
+		  targets_pad:   (batch, max_group_size)
+		  chosen_valid:  (batch, max_group_size)
+		"""
+		batch_size = X.shape[0]
+		chosen = torch.randint(0, self.num_groups, (batch_size,), device=X.device)
 
-	# 掩码置零：(batch, num_features)
-	batch_mask = group_mask_matrix[chosen]          # (batch, num_features)
-	X_masked = X.masked_fill(batch_mask, 0.0)
+		batch_mask = self.mask_matrix[chosen]
+		X_masked = X.masked_fill(batch_mask, 0.0)
 
-	# 提取 targets：用 padded_indices 批量 gather
-	chosen_padded = padded_indices[chosen]           # (batch, max_group_size)
-	chosen_valid = valid_mask[chosen]                # (batch, max_group_size)
-	# gather 原始值
-	targets_pad = X.gather(1, chosen_padded)         # (batch, max_group_size)
+		chosen_padded = self.padded_indices[chosen]
+		chosen_valid = self.valid_mask[chosen]
+		targets_pad = X.gather(1, chosen_padded)
 
-	return X_masked, chosen_padded, targets_pad, chosen_valid
+		return X_masked, chosen_padded, targets_pad, chosen_valid
 
 
 def prepare_pretrain_data(
