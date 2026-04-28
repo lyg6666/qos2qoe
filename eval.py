@@ -34,6 +34,7 @@ def evaluate(args):
 	seq_len = ckpt.get("seq_len", 1)
 	output_dim = ckpt.get("output_dim", 1)
 	class_bins = ckpt.get("class_bins")
+	groups = ckpt["groups"]
 
 	df = read_csv(args.data_path)
 	feature_cols = [c for c in df.columns if c not in TARGET_COLS and c != "时间"]
@@ -51,6 +52,7 @@ def evaluate(args):
 		inner_bins = class_bins[1:-1]
 		y_test = np.digitize(y_test_raw, inner_bins).astype(np.int64)
 	else:
+		# regression 和 regression_bin 都用回归 scaler
 		y_test = scaler_y.transform(y_test_raw.reshape(-1, 1)).flatten().astype(np.float32)
 
 	if seq_len > 1:
@@ -64,7 +66,7 @@ def evaluate(args):
 	test_loader = DataLoader(test_set, batch_size=EVAL_CONFIG["batch_size"])
 
 	model = FullModel(
-		num_features=cfg["num_features"], d_model=cfg["d_model"],
+		groups=groups, d_model=cfg["d_model"],
 		n_heads=cfg["n_heads"], n_layers=cfg["n_layers"],
 		cross_layers=cfg["cross_layers"], deep_dims=cfg.get("deep_dims", [256, 128]),
 		dropout=cfg.get("dropout", 0.1),
@@ -86,16 +88,23 @@ def evaluate(args):
 
 	timestamp = datetime.now().strftime("%m%d_%H%M%S")
 
-	if task_type == "classification":
-		y_pred_class = y_pred_raw.argmax(axis=1)
-		y_true_class = y_true_raw
+	if task_type in ("classification", "regression_bin"):
+		clf_cfg = CLASSIFICATION_CONFIG[args.target]
+		class_names = clf_cfg["class_names"]
+		inner_bins = class_bins[1:-1]
+
+		if task_type == "classification":
+			y_pred_class = y_pred_raw.argmax(axis=1)
+			y_true_class = y_true_raw.astype(np.int64)
+		else:
+			# 回归预测 → 反归一化 → 分箱
+			y_pred_real = scaler_y.inverse_transform(y_pred_raw.reshape(-1, 1)).flatten()
+			y_pred_class = np.digitize(y_pred_real, inner_bins)
+			y_true_class = np.digitize(y_test_raw, inner_bins)
 
 		acc = accuracy_score(y_true_class, y_pred_class)
 		f1_macro = f1_score(y_true_class, y_pred_class, average="macro", zero_division=0)
 		cm = confusion_matrix(y_true_class, y_pred_class)
-
-		clf_cfg = CLASSIFICATION_CONFIG[args.target]
-		class_names = clf_cfg["class_names"]
 
 		print(f"[{args.target}] Accuracy={acc:.4f}  Macro-F1={f1_macro:.4f}")
 		print(f"Confusion Matrix:\n{cm}")
@@ -104,7 +113,6 @@ def evaluate(args):
 		run_dir = DEFAULT_EVAL_PLOT_DIR / f"{args.target}_Acc={acc:.4f}_{timestamp}"
 		run_dir.mkdir(parents=True, exist_ok=True)
 
-		# confusion matrix 可视化
 		fig, ax = plt.subplots(figsize=(6, 5))
 		im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
 		ax.figure.colorbar(im, ax=ax)

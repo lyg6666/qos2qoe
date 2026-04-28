@@ -13,8 +13,6 @@ from util import read_csv, build_scheduler, get_device
 
 
 def group_mse_loss(preds, targets_pad, chosen_valid):
-	# 全部向量化：只对有效位置计算 MSE
-	# preds, targets_pad, chosen_valid: (batch, max_group_size)
 	diff = (preds - targets_pad) ** 2
 	loss = (diff * chosen_valid.float()).sum() / chosen_valid.float().sum()
 	return loss
@@ -30,14 +28,16 @@ def train(args):
 	feature_cols = [c for c in df.columns if c not in TARGET_COLS and c != "时间"]
 	train_set, val_set, scaler_X = prepare_pretrain_data(df, feature_cols)
 	groups = build_group_indices(feature_cols)
-	masker = GroupMasker(groups, cfg_b["num_features"], device=device)
+	masker = GroupMasker(groups, device=device)
 
 	train_loader = DataLoader(train_set, batch_size=cfg_t["batch_size"], shuffle=True)
 	val_loader = DataLoader(val_set, batch_size=cfg_t["batch_size"])
 
 	model = PretrainModel(
-		num_features=cfg_b["num_features"], d_model=cfg_b["d_model"],
-		n_heads=cfg_b["n_heads"], n_layers=cfg_b["n_layers"],
+		groups=groups,
+		d_model=cfg_b["d_model"],
+		n_heads=cfg_b["n_heads"],
+		n_layers=cfg_b["n_layers"],
 		dropout=cfg_b["dropout"],
 	).to(device)
 
@@ -56,8 +56,8 @@ def train(args):
 		train_batches = 0
 		for X in train_loader:
 			X = X.to(device)
-			X_masked, chosen_padded, targets_pad, chosen_valid = masker.mask(X)
-			preds = model(X_masked, chosen_padded, chosen_valid)
+			chosen_group_idx, targets_pad, chosen_valid = masker.mask(X)
+			preds, valid = model(X, chosen_group_idx)
 			loss = group_mse_loss(preds, targets_pad, chosen_valid)
 			optimizer.zero_grad()
 			loss.backward()
@@ -73,8 +73,8 @@ def train(args):
 		with torch.no_grad():
 			for X in val_loader:
 				X = X.to(device)
-				X_masked, chosen_padded, targets_pad, chosen_valid = masker.mask(X)
-				preds = model(X_masked, chosen_padded, chosen_valid)
+				chosen_group_idx, targets_pad, chosen_valid = masker.mask(X)
+				preds, valid = model(X, chosen_group_idx)
 				loss = group_mse_loss(preds, targets_pad, chosen_valid)
 				val_loss += loss.item()
 				val_batches += 1

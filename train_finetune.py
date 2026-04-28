@@ -9,7 +9,7 @@ from config import (
 	DEFAULT_CHECKPOINT_DIR, DEFAULT_DATASET_OUTPUT_DIR,
 	TARGET_MAP, TARGET_COLS, TASK_TYPE, CLASSIFICATION_CONFIG,
 )
-from dataset import prepare_finetune_data
+from dataset import prepare_finetune_data, build_group_indices
 from model import FullModel
 from util import read_csv, build_scheduler, get_device
 
@@ -28,6 +28,9 @@ def train(args):
 		clf_cfg = CLASSIFICATION_CONFIG[args.target]
 		output_dim = clf_cfg["num_classes"]
 		class_bins = clf_cfg["bins"]
+	elif task_type == "regression_bin":
+		class_bins = CLASSIFICATION_CONFIG[args.target]["bins"]
+		output_dim = 1
 	else:
 		output_dim = 1
 		class_bins = None
@@ -36,13 +39,15 @@ def train(args):
 	ckpt_dir = Path(args.ckpt_dir)
 	pretrain_ckpt = torch.load(ckpt_dir / "pretrain_backbone.pt", map_location=device, weights_only=False)
 	scaler_X = pretrain_ckpt["scaler_X"]
+	groups = pretrain_ckpt["groups"]
 
-	# 加载数据
+	# 加载数据（regression_bin 走回归路径，让模型学连续值）
+	data_task_type = "regression" if task_type == "regression_bin" else task_type
 	df = read_csv(args.data_path)
 	feature_cols = [c for c in df.columns if c not in TARGET_COLS and c != "时间"]
 	train_set, val_set, test_set, scaler_X, scaler_y = prepare_finetune_data(
 		df, feature_cols, target_col, scaler_X=scaler_X,
-		seq_len=seq_len, task_type=task_type, class_bins=class_bins,
+		seq_len=seq_len, task_type=data_task_type, class_bins=class_bins,
 	)
 
 	train_loader = DataLoader(train_set, batch_size=cfg_t["batch_size"], shuffle=True)
@@ -50,7 +55,7 @@ def train(args):
 
 	# 构建模型，加载预训练 backbone
 	model = FullModel(
-		num_features=cfg_b["num_features"], d_model=cfg_b["d_model"],
+		groups=groups, d_model=cfg_b["d_model"],
 		n_heads=cfg_b["n_heads"], n_layers=cfg_b["n_layers"],
 		cross_layers=cfg_d["cross_layers"], deep_dims=cfg_d["deep_dims"],
 		dropout=cfg_d["dropout"],
@@ -69,10 +74,13 @@ def train(args):
 	scheduler = build_scheduler(optimizer, cfg_t["warmup_epochs"], cfg_t["epochs"], len(train_loader))
 
 	if task_type == "classification":
-		criterion = nn.CrossEntropyLoss()
+		from collections import Counter
+		counts = Counter(train_set.y.numpy().flatten())
+		total = sum(counts.values())
+		weights = torch.tensor([total / (len(counts) * counts[i]) for i in range(output_dim)], dtype=torch.float32).to(device)
+		criterion = nn.CrossEntropyLoss(weight=weights)
 	else:
 		criterion = nn.MSELoss()
-
 	best_val_loss = float("inf")
 	patience_counter = 0
 	ckpt_path = ckpt_dir / f"finetune_{args.target}.pt"
@@ -83,7 +91,7 @@ def train(args):
 		for X, y in train_loader:
 			X, y = X.to(device), y.to(device)
 			if task_type == "classification":
-				y = y.squeeze()
+				y = y.squeeze().long()
 			else:
 				y = y.view(-1)
 			pred = model(X)
@@ -122,6 +130,7 @@ def train(args):
 				"epoch": epoch,
 				"best_val_loss": best_val_loss,
 				"config": {**cfg_b, **cfg_d},
+				"groups": groups,
 				"target": args.target,
 				"task_type": task_type,
 				"seq_len": seq_len,

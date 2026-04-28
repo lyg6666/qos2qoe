@@ -74,19 +74,12 @@ def build_group_indices(feature_cols, metric_groups=METRIC_GROUPS):
 
 
 class GroupMasker:
-	"""封装组级掩码的预计算张量和掩码操作，调用方无需管理内部细节。"""
+	"""随机选一个 group，返回其原始特征值作为预训练目标。mask 操作在模型内部完成。"""
 
-	def __init__(self, groups, num_features, device="cpu"):
+	def __init__(self, groups, device="cpu"):
 		self.groups = groups
 		self.num_groups = len(groups)
 
-		# 构建 (num_groups, num_features) 布尔矩阵
-		mask_matrix = torch.zeros(self.num_groups, num_features, dtype=torch.bool)
-		for i, positions in enumerate(groups):
-			mask_matrix[i, positions] = True
-		self.mask_matrix = mask_matrix.to(device)
-
-		# padding 对齐各组索引
 		max_len = max(len(g) for g in groups)
 		padded = torch.zeros(self.num_groups, max_len, dtype=torch.long)
 		valid = torch.zeros(self.num_groups, max_len, dtype=torch.bool)
@@ -98,26 +91,21 @@ class GroupMasker:
 
 	def mask(self, X):
 		"""
-		向量化组级掩码。
 		参数:
 		  X: (batch, num_features)
 		返回:
-		  X_masked:      (batch, num_features)
-		  chosen_padded: (batch, max_group_size)
-		  targets_pad:   (batch, max_group_size)
-		  chosen_valid:  (batch, max_group_size)
+		  chosen_group_idx: (batch,)          被选中的组索引
+		  targets_pad:      (batch, max_group_size)  该组原始特征值（含 padding）
+		  chosen_valid:     (batch, max_group_size)  有效位置掩码
 		"""
 		batch_size = X.shape[0]
 		chosen = torch.randint(0, self.num_groups, (batch_size,), device=X.device)
-
-		batch_mask = self.mask_matrix[chosen]
-		X_masked = X.masked_fill(batch_mask, 0.0)
 
 		chosen_padded = self.padded_indices[chosen]
 		chosen_valid = self.valid_mask[chosen]
 		targets_pad = X.gather(1, chosen_padded)
 
-		return X_masked, chosen_padded, targets_pad, chosen_valid
+		return chosen, targets_pad, chosen_valid
 
 
 def prepare_pretrain_data(

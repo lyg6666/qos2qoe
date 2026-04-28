@@ -46,14 +46,18 @@ METRIC_GROUPS = {
 	"RTT": [
 		"0–RTT 数", "0RTT 占比", "early data成功次数", "early data成功占比",
 		"P99Srtt", "P90SRTT", "P95SRTT", "SRTT与minRTT比例关系",
-		"MinRtt", "MaxRtt", "Srtt", "流速率低于BR时SRTT",
+		"MinRtt", "MaxRtt", "Srtt", 
 	],
 	"下载速率": [
+		"流速率低于BR时SRTT",
 		"流速率低于BR时SRTT与minRTT比例关系",
-		"P5_DownloadSpeed", "P10_DownloadSpeed", "P90_DownloadSpeed",
-		"下载速率", "从连接建立到收到第500KB字节ACK的时间", "P50_DownloadSpeed",
 	],
+	"带宽": ["带宽max_bw", "流速率小于码率数", "流速率小于1点25倍码率数"],
+	"服务器IP": ["服务器ip数目"],
+	"视频观看": ["视频总观看数（视频号）", "视频平均分片数", "首分片数", "用户平均观看分片数", "用户平均观看视频数（视频号）", "非首分片数"],
 	"流量": ["所有发送的字节数（含重传）", "发送字节和（流量）"],
+	"重传相关": ["TLP次数", "重传字节数", "重传率", "RTO次数"],
+	"下载速率区间": ["DownloadSpeed在10~500之间的数量", "DownloadSpeed在10~1000之间的数量", "DownloadSpeed在10~500之间的占比", "DownloadSpeed在10~1000之间的占比", "P1_DownloadSpeed", "P5_DownloadSpeed", "P10_DownloadSpeed", "P90_DownloadSpeed", "下载速率", "从连接建立到收到第500KB字节ACK的时间", "P50_DownloadSpeed"],
 	"拥塞控制": ["拥塞控制限制时间"],
 }
 
@@ -78,7 +82,7 @@ PRETRAIN_CONFIG = {
 	"epochs": 100,
 	"warmup_epochs": 5,
 	"lr": 1e-3,
-	"batch_size": 512,
+	"batch_size": 256,
 	"patience": 15,
 	"weight_decay": 1e-4,
 }
@@ -91,9 +95,9 @@ WINDOW_CONFIG = {
 # 分类配置
 CLASSIFICATION_CONFIG = {
 	"stall_rate": {
-		"bins": [0, 0.2, 0.3, 0.4, float("inf")],
-		"num_classes": 4,
-		"class_names": ["[0,0.2)", "[0.2,0.3)", "[0.3,0.4)", "[0.4,inf)"],
+		"bins": [0, 0.2, 0.4, float("inf")],
+		"num_classes": 3,
+		"class_names": ["[0,0.2)", "[0.2,0.4)", "[0.4,inf)"],
 	},
 }
 
@@ -101,11 +105,11 @@ CLASSIFICATION_CONFIG = {
 FINETUNE_CONFIG = {
 	"epochs": 100,
 	"warmup_epochs": 5,
-	"lr": 5e-5,
-	"batch_size": 512,
+	"lr": 1e-5,
+	"batch_size": 256,
 	"patience": 15,
 	"weight_decay": 1e-4,
-	"freeze_backbone": True,
+	"freeze_backbone": False,
 }
 
 # 数据切分配置
